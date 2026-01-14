@@ -1,0 +1,137 @@
+{
+    "welcome": {
+        "uz": "Xush kelibsiz! Iltimos, tilni tanlang.",
+        "ru": "Добро пожаловать! Пожалуйста, выберите язык.",
+        "en": "Welcome! Please select a language."
+    },
+    "welcome_back": {
+        "uz": "Xush kelibsiz, {name}!",
+        "ru": "С возвращением, {name}!",
+        "en": "Welcome back, {name}!"
+    },
+    "share_contact": {
+        "uz": "Ro'yxatdan o'tish uchun telefon raqamingizni yuboring.",
+        "ru": "Для регистрации отправьте ваш номер телефона.",
+        "en": "Please share your phone number to register."
+    },
+    "contact_button": {
+        "uz": "📱 Kontaktni yuborish",
+        "ru": "📱 Отправить контакт",
+        "en": "📱 Share Contact"
+    },
+    "registered_wait": {
+        "uz": "Siz muvaffaqiyatli ro'yxatdan o'tdingiz! Administrator tasdiqlashini kuting.",
+        "ru": "Вы успешно зарегистрировались! Ожидайте подтверждения администратора.",
+        "en": "You have successfully registered! Please wait for admin approval."
+    },
+    "already_registered_wait": {
+        "uz": "Sizning hisobingiz hali faollashtirilmagan. Iltimos, kuting.",
+        "ru": "Ваша учетная запись еще не активирована. Пожалуйста, подождите.",
+        "en": "Your account is not active yet. Please wait."
+    },
+    "menu_main": {
+        "uz": "Asosiy menyu",
+        "ru": "Главное меню",
+        "en": "Main Menu"
+    },
+    "btn_order": {
+        "uz": "📦 Buyurtma berish",
+        "ru": "📦 Заказать",
+        "en": "📦 Order"
+    },
+    "btn_history": {
+        "uz": "📜 Buyurtmalar tarixi",
+        "ru": "📜 История заказов",
+        "en": "📜 Order History"
+    },
+    "btn_settings": {
+        "uz": "⚙️ Sozlamalar",
+        "ru": "⚙️ Настройки",
+        "en": "⚙️ Settings"
+    },
+    "btn_contact": {
+        "uz": "📞 Biz bilan aloqa",
+        "ru": "📞 Связаться с нами",
+        "en": "📞 Contact Us"
+    },
+    "btn_comment": {
+        "uz": "✍️ Izoh qoldirish",
+        "ru": "✍️ Оставить комментарий",
+        "en": "✍️ Leave a Comment"
+    },
+    "back": {
+        "uz": "⬅️ Ortga",
+        "ru": "⬅️ Назад",
+        "en": "⬅️ Back"
+    },
+    "select_category": {
+        "uz": "Kategoriyani tanlang:",
+        "ru": "Выберите категорию:",
+        "en": "Select a category:"
+    },
+    "select_subcategory": {
+        "uz": "Subkategoriyani tanlang:",
+        "ru": "Выберите подкатегорию:",
+        "en": "Select a subcategory:"
+    },
+    "select_product": {
+        "uz": "Mahsulotni tanlang:",
+        "ru": "Выберите продукт:",
+        "en": "Select a product:"
+    },
+    "price": {
+        "uz": "Narxi",
+        "ru": "Цена",
+        "en": "Price"
+    },
+    "add_to_cart": {
+        "uz": "🛒 Savatga qo'shish",
+        "ru": "🛒 Добавить в корзину",
+        "en": "🛒 Add to Cart"
+    },
+    "enter_amount": {
+        "uz": "Miqdorni kiriting (raqamda):",
+        "ru": "Введите количество (цифрами):",
+        "en": "Enter amount (numbers):"
+    },
+    "added_to_cart": {
+        "uz": "Savatga qo'shildi!",
+        "ru": "Добавлено в корзину!",
+        "en": "Added to cart!"
+    },
+    "cart_empty": {
+        "uz": "Savatingiz bo'sh",
+        "ru": "Ваша корзина пуста",
+        "en": "Your cart is empty"
+    },
+    "checkout": {
+        "uz": "🚖 Buyurtma berish",
+        "ru": "🚖 Оформить заказ",
+        "en": "🚖 Checkout"
+    },
+    "clear_cart": {
+        "uz": "🗑 Savatni tozalash",
+        "ru": "🗑 Очистить корзину",
+        "en": "🗑 Clear Cart"
+    },
+    "order_created": {
+        "uz": "✅ Buyurtmangiz qabul qilindi! ID: {id}",
+        "ru": "✅ Ваш заказ принят! ID: {id}",
+        "en": "✅ Your order has been placed! ID: {id}"
+    },
+    "back_to_menu": {
+        "uz": "⬅️ Asosiy menyuga qaytish",
+        "ru": "⬅️ Вернуться в меню",
+        "en": "⬅️ Back to Menu"
+    },
+    "continue_shopping": {
+        "uz": "📦 Xaridni davom ettirish",
+        "ru": "📦 Продолжить покупки",
+        "en": "📦 Continue Shopping"
+    },
+    "view_cart": {
+        "uz": "🛒 Savatni ko'rish",
+        "ru": "🛒 Посмотреть корзину",
+        "en": "🛒 View Cart"
+    }
+}
