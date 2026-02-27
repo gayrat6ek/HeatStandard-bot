@@ -53,11 +53,8 @@ class BackendAPI:
         session = await self.get_session()
         url = f"{self.base_url}{path}"
         
-        # Determine which token to use
-        # Priority: 
-        # 1. Explicit token in kwargs['headers']
-        # 2. User token from context
-        # 3. Admin token
+        # Internal flag to prevent infinite recursion
+        is_retry = kwargs.pop("_is_retry", False)
         
         headers = kwargs.get("headers", {})
         if "Authorization" not in headers:
@@ -69,7 +66,7 @@ class BackendAPI:
         kwargs["headers"] = headers
 
         async with session.request(method, url, **kwargs) as response:
-            if response.status == 401 and not kwargs.get("_is_retry"):
+            if response.status == 401 and not is_retry:
                 # Potential token expiry, try admin login again if we were using admin token
                 if not _token_var.get() and await self.admin_login():
                     kwargs["_is_retry"] = True
