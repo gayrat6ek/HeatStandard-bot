@@ -74,19 +74,24 @@ async def show_groups(message: types.Message, state: FSMContext, parent_id: str 
     # Show search button when at root level
     if is_root:
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        search_texts = {
+        search_btn_texts = {
             "uz": "🔍 Mahsulot qidirish",
             "ru": "🔍 Поиск товаров", 
             "en": "🔍 Search products"
         }
+        search_hint_texts = {
+            "uz": "Yoki ushbu tugma bilan qidiring 👇",
+            "ru": "Или найдите товар с помощью кнопки 👇",
+            "en": "Or search using the button below 👇"
+        }
         search_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text=search_texts.get(lang, search_texts["ru"]),
+                text=search_btn_texts.get(lang, search_btn_texts["ru"]),
                 switch_inline_query_current_chat=""
             )]
         ])
         await message.answer(
-            "👆" if lang != "en" else "👆",
+            search_hint_texts.get(lang, search_hint_texts["ru"]),
             reply_markup=search_keyboard
         )
     

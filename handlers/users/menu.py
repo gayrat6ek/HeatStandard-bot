@@ -100,20 +100,25 @@ async def order_handler(message: types.Message, state: FSMContext):
         reply_markup=get_groups_keyboard(groups, lang, is_root=True)
     )
     
-    # Show inline search button
-    search_texts = {
+    # Show inline search button combined with hint text
+    search_btn_texts = {
         "uz": "🔍 Mahsulot qidirish",
         "ru": "🔍 Поиск товаров", 
         "en": "🔍 Search products"
     }
+    search_hint_texts = {
+        "uz": "Yoki ushbu tugma bilan qidiring 👇",
+        "ru": "Или найдите товар с помощью кнопки 👇",
+        "en": "Or search using the button below 👇"
+    }
     search_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=search_texts.get(lang, search_texts["ru"]),
+            text=search_btn_texts.get(lang, search_btn_texts["ru"]),
             switch_inline_query_current_chat=""
         )]
     ])
     await message.answer(
-        "👆 Or search for products:" if lang == "en" else ("👆 Yoki mahsulot qidiring:" if lang == "uz" else "👆 Или найдите товар:"),
+        search_hint_texts.get(lang, search_hint_texts["ru"]),
         reply_markup=search_keyboard
     )
     
