@@ -1,8 +1,9 @@
 from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
-from utils.localization import get_text, LANG_MAP
+from utils.localization import get_text, LANG_MAP, format_price
 from keyboards.default.menu import get_language_keyboard, get_main_menu_keyboard
 from utils.api import api_client
+from states.registration import RegisterState
 
 router = Router()
 router.message.filter(F.chat.type == "private")
@@ -110,7 +111,6 @@ async def history_handler(message: types.Message, state: FSMContext):
         msg_text += f"{status_icon} Order #{order_num} | {date} | {format_price(float(total))}\n"
 
     await message.answer(msg_text)
-from states.registration import RegisterState
 
 
 # Handler for Order button
