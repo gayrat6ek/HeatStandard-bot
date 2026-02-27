@@ -8,6 +8,7 @@ from utils.api import api_client
 from utils.localization import get_text, LANG_MAP
 
 router = Router()
+router.message.filter(F.chat.type == "private")
 
 
 async def initialize_user(message: types.Message, state: FSMContext):

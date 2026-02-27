@@ -20,6 +20,7 @@ from hashlib import md5
 import logging
 
 router = Router()
+router.message.filter(F.chat.type == "private")
 logger = logging.getLogger(__name__)
 
 

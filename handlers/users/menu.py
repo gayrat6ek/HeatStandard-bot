@@ -5,6 +5,7 @@ from keyboards.default.menu import get_language_keyboard, get_main_menu_keyboard
 from utils.api import api_client
 
 router = Router()
+router.message.filter(F.chat.type == "private")
 
 @router.message(F.text == "📱 Kontaktni yuborish")
 @router.message(F.text == "📱 Отправить контакт") 

@@ -14,6 +14,7 @@ from utils.localization import get_text, format_price
 import logging
 
 router = Router()
+router.message.filter(F.chat.type == "private")
 logger = logging.getLogger(__name__)
 
 # --- Helper Functions ---
