@@ -1,14 +1,19 @@
 import aiohttp
-from typing import Optional, Dict, Any
-from data.config import API_URL
 import logging
+from typing import Optional, Dict, Any, List
+from data.config import API_URL, ADMIN_USERNAME, ADMIN_PASSWORD
+from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
+
+# Task-local storage for user token
+_token_var: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
 
 class BackendAPI:
     def __init__(self):
         self.base_url = API_URL
         self.session: Optional[aiohttp.ClientSession] = None
+        self._admin_token: Optional[str] = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if self.session is None or self.session.closed:
@@ -19,137 +24,144 @@ class BackendAPI:
         if self.session and not self.session.closed:
             await self.session.close()
 
+    def set_user_token(self, token: Optional[str]):
+        """Set user token for the current context."""
+        _token_var.set(token)
+
+    async def admin_login(self) -> bool:
+        """Login as admin to get management token."""
+        try:
+            session = await self.get_session()
+            payload = {
+                "username": ADMIN_USERNAME,
+                "password": ADMIN_PASSWORD
+            }
+            async with session.post(f"{self.base_url}/auth/login", json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self._admin_token = data.get("access_token")
+                    logger.info("Admin login successful")
+                    return True
+                logger.error(f"Admin login failed: {response.status} - {await response.text()}")
+                return False
+        except Exception as e:
+            logger.error(f"Admin login error: {e}")
+            return False
+
+    async def _request(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+        """Unified request handler with automatic authentication."""
+        session = await self.get_session()
+        url = f"{self.base_url}{path}"
+        
+        # Determine which token to use
+        # Priority: 
+        # 1. Explicit token in kwargs['headers']
+        # 2. User token from context
+        # 3. Admin token
+        
+        headers = kwargs.get("headers", {})
+        if "Authorization" not in headers:
+            user_token = _token_var.get()
+            token = user_token or self._admin_token
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+        
+        kwargs["headers"] = headers
+
+        async with session.request(method, url, **kwargs) as response:
+            if response.status == 401 and not kwargs.get("_is_retry"):
+                # Potential token expiry, try admin login again if we were using admin token
+                if not _token_var.get() and await self.admin_login():
+                    kwargs["_is_retry"] = True
+                    # Update headers with new admin token
+                    headers["Authorization"] = f"Bearer {self._admin_token}"
+                    return await self._request(method, path, **kwargs)
+                
+            if response.status in [200, 201]:
+                return await response.json()
+            
+            error_data = await response.text()
+            logger.error(f"API Request Failed: {method} {path} - Status: {response.status} - Body: {error_data}")
+            return {"error": f"Status {response.status}", "detail": error_data}
+
     async def register_user(self, telegram_id: str, phone_number: str, full_name: str, language: str) -> Dict[str, Any]:
         """Register a new user via Telegram."""
-        session = await self.get_session()
         payload = {
             "telegram_id": str(telegram_id),
             "phone_number": phone_number,
             "full_name": full_name,
             "current_lang": language
         }
-        async with session.post(f"{self.base_url}/auth/telegram/register", json=payload) as response:
-            if response.status == 201:
-                return await response.json()
-            error_data = await response.json()
-            logger.error(f"Registration failed: {error_data}")
-            return {"error": error_data.get("detail", "Registration failed")}
+        return await self._request("POST", "/auth/telegram/register", json=payload)
 
     async def login_user(self, telegram_id: str) -> Dict[str, Any]:
         """Login user via Telegram ID."""
-        session = await self.get_session()
         payload = {"telegram_id": str(telegram_id)}
-        async with session.post(f"{self.base_url}/auth/telegram/login", json=payload) as response:
-            if response.status == 200:
-                return await response.json()
-            return {"error": "Login failed"}
+        return await self._request("POST", "/auth/telegram/login", json=payload)
 
-    async def get_user(self, telegram_id: str) -> Dict[str, Any]:
-        """Get user details by Telegram ID."""
-        session = await self.get_session()
-        # Using the specific endpoint for telegram lookup if available, or just rely on login to check existence?
-        # The backend has /users/telegram/{telegram_id}
-        async with session.get(f"{self.base_url}/users/telegram/{telegram_id}") as response:
-            if response.status == 200:
-                return await response.json()
+    async def get_user(self, telegram_id: str) -> Optional[Dict[str, Any]]:
+        """Get user details by Telegram ID. Uses admin token."""
+        res = await self._request("GET", f"/users/telegram/{telegram_id}")
+        if "error" in res:
             return None
+        return res
 
     async def get_groups(self, parent_id: str = None) -> Dict[str, Any]:
-        """Fetch groups. Use parent_id='null' for root groups, or a group id for children."""
-        session = await self.get_session()
-        if parent_id is None:
-            # Get root groups
-            url = f"{self.base_url}/groups?parent_id=null&limit=100"
-        else:
-            # Get child groups
-            url = f"{self.base_url}/groups?parent_id={parent_id}&limit=100"
-        
-        async with session.get(url) as response:
-            if response.status == 200:
-                return await response.json()
-            return {"items": [], "total": 0}
+        """Fetch groups."""
+        path = "/groups?limit=100"
+        path += f"&parent_id={parent_id if parent_id else 'null'}"
+        return await self._request("GET", path)
 
     async def get_products(self, group_id: str) -> Dict[str, Any]:
         """Fetch products for a group."""
-        session = await self.get_session()
-        async with session.get(f"{self.base_url}/products?group_id={group_id}&limit=100") as response:
-            if response.status == 200:
-                return await response.json()
-            return {"items": [], "total": 0}
+        return await self._request("GET", f"/products?group_id={group_id}&limit=100")
 
     async def search_products(self, query: str, limit: int = 20) -> Dict[str, Any]:
         """Search products by name."""
         from urllib.parse import quote
-        session = await self.get_session()
         encoded_query = quote(query)
-        url = f"{self.base_url}/products?search={encoded_query}&limit={limit}"
-        logger.info(f"Searching products: {url}")
-        async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                logger.info(f"Search response: {len(data.get('items', []))} products found")
-                return data
-            logger.error(f"Search request failed: {response.status}")
-            return {"items": [], "total": 0}
+        return await self._request("GET", f"/products?search={encoded_query}&limit={limit}")
             
-    async def get_product(self, product_id: str) -> Dict[str, Any]:
+    async def get_product(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Get single product details."""
-        session = await self.get_session()
-        async with session.get(f"{self.base_url}/products/{product_id}") as response:
-            if response.status == 200:
-                return await response.json()
+        res = await self._request("GET", f"/products/{product_id}")
+        if "error" in res:
             return None
+        return res
 
-    async def create_order(self, order_data: Dict[str, Any], token: str) -> Dict[str, Any]:
-        """Create a new order."""
-        session = await self.get_session()
-        headers = {"Authorization": f"Bearer {token}"}
-        async with session.post(f"{self.base_url}/orders", json=order_data, headers=headers) as response:
-            if response.status == 201:
-                return await response.json()
-            error_text = await response.text()
-            logger.error(f"Order creation failed: {error_text}")
-            return {"error": "Order creation failed"}
+    async def create_order(self, order_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        """Create a new order. User token should be in context."""
+        # Ensure user_id is in payload
+        order_data["user_id"] = user_id
+        return await self._request("POST", "/orders", json=order_data)
+
+    async def get_user_orders(self, user_id: str, skip: int = 0, limit: int = 100) -> Dict[str, Any]:
+        """Fetch orders for a specific user."""
+        return await self._request("GET", f"/orders?user_id={user_id}&skip={skip}&limit={limit}")
 
     async def update_lang(self, telegram_id: str, lang: str):
         """Update user language."""
-        # First login to get token (or search user by telegram id if endpoint allows open update which it shouldn't)
-        # We need token to update info usually.
-        # But wait, the menu handler doesn't have token in state if they just clicked settings without ordering?
-        # The start handler logs them in.
-        # Let's assume we can login with telegram_id to get token.
-        login_res = await self.login_user(telegram_id)
-        token = login_res.get("access_token")
-        if not token:
-            return
-            
-        session = await self.get_session()
-        headers = {"Authorization": f"Bearer {token}"}
-        
-        # We need to call PUT /users/me/profile
+        # Using /users/me/profile requires user token. 
+        # If not in context, we login first.
+        if not _token_var.get():
+            login_res = await self.login_user(telegram_id)
+            token = login_res.get("access_token")
+            if token:
+                self.set_user_token(token)
+            else:
+                return
+
         payload = {"current_lang": lang}
-        async with session.put(f"{self.base_url}/users/me/profile", json=payload, headers=headers) as response:
-            if response.status != 200:
-                logger.error(f"Failed to update language: {await response.text()}")
+        await self._request("PUT", "/users/me/profile", json=payload)
 
-    async def update_order_message_id(self, order_id: str, message_id: int, token: str):
+    async def update_order_message_id(self, order_id: str, message_id: int):
         """Update order with telegram message ID."""
-        session = await self.get_session()
-        headers = {"Authorization": f"Bearer {token}"}
         payload = {"telegram_message_id": message_id}
-        async with session.patch(f"{self.base_url}/orders/{order_id}", json=payload, headers=headers) as response:
-            if response.status != 200:
-                logger.error(f"Failed to update order message ID: {await response.text()}")
+        await self._request("PATCH", f"/orders/{order_id}", json=payload)
 
-    async def update_order_status(self, order_id: str, status: str, token: str) -> Dict[str, Any]:
+    async def update_order_status(self, order_id: str, status: str) -> Dict[str, Any]:
         """Update order status."""
-        session = await self.get_session()
-        headers = {"Authorization": f"Bearer {token}"}
         payload = {"status": status}
-        async with session.patch(f"{self.base_url}/orders/{order_id}", json=payload, headers=headers) as response:
-            if response.status == 200:
-                return await response.json()
-            logger.error(f"Failed to update order status: {await response.text()}")
-            return {"error": "Failed to update status"}
+        return await self._request("PATCH", f"/orders/{order_id}", json=payload)
 
 api_client = BackendAPI()

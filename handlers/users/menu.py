@@ -64,8 +64,54 @@ async def comment_handler(message: types.Message, state: FSMContext):
 async def history_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
+    telegram_id = str(message.from_user.id)
     
-    await message.answer("History feature coming soon / Tez orada / Скоро")
+    # Get user info to get user_id
+    user_info = await api_client.get_user(telegram_id)
+    if not user_info:
+        await message.answer(get_text("welcome", lang), reply_markup=get_language_keyboard())
+        await state.set_state(RegisterState.language)
+        return
+
+    user_id = user_info.get("id")
+    res = await api_client.get_user_orders(user_id)
+    orders = res.get("items", [])
+    
+    if not orders:
+        no_orders_text = {
+            "uz": "Sizda hali buyurtmalar yo'q.",
+            "ru": "У вас пока нет заказов.",
+            "en": "You don't have any orders yet."
+        }
+        await message.answer(no_orders_text.get(lang, no_orders_text["ru"]))
+        return
+    
+    # Format order list
+    history_text = {
+        "uz": "Sizning buyurtmalaringiz tarixi:\n\n",
+        "ru": "Ваша история заказов:\n\n",
+        "en": "Your order history:\n\n"
+    }
+    msg_text = history_text.get(lang, history_text["ru"])
+    
+    status_map = {
+        "pending": "⏳",
+        "confirmed": "✅",
+        "rejected": "❌",
+        "declined": "❌"
+    }
+    
+    for order in orders[:10]: # Show last 10 orders
+        order_num = order.get("order_number", "???")
+        status = order.get("status", "pending")
+        date = order.get("created_at", "").split("T")[0]
+        total = order.get("total_amount", 0)
+        
+        status_icon = status_map.get(status, "❓")
+        msg_text += f"{status_icon} Order #{order_num} | {date} | {format_price(float(total))}\n"
+
+    await message.answer(msg_text)
+from states.registration import RegisterState
 
 
 # Handler for Order button

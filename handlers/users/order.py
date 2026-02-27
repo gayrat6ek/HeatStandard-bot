@@ -412,12 +412,16 @@ async def cart_action(message: types.Message, state: FSMContext):
         customer_phone = "+998900000000"  # Fallback phone
         
         if user_info:
+            user_id = user_info.get("id")
             customer_name = user_info.get("full_name") or message.from_user.full_name or "Telegram User"
             phone = user_info.get("phone_number", "")
             if phone and phone.strip():
                 customer_phone = phone.strip()
+        else:
+            await message.answer("User profile not found. Please /start again.")
+            return
         
-        logger.info(f"Creating order: customer={customer_name}, phone={customer_phone}")
+        logger.info(f"Creating order: customer={customer_name}, phone={customer_phone}, user_id={user_id}")
         
         payload = {
             "organization_id": first_org_id,
@@ -435,7 +439,7 @@ async def cart_action(message: types.Message, state: FSMContext):
             "customer_phone": customer_phone,
         }
         
-        res = await api_client.create_order(payload, token)
+        res = await api_client.create_order(payload, user_id)
         
         if "error" in res:
             await message.answer(f"Error: {res['error']}")
@@ -486,7 +490,7 @@ async def cart_action(message: types.Message, state: FSMContext):
                     reply_markup=admin_keyboard
                 )
                 # Save message ID for later editing
-                await api_client.update_order_message_id(order_id, admin_msg.message_id, token)
+                await api_client.update_order_message_id(order_id, admin_msg.message_id)
             except Exception as e:
                 logger.error(f"Failed to send order to admin group: {e}")
             

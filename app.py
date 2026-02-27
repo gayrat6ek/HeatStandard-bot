@@ -13,6 +13,15 @@ async def main():
     logger = logging.getLogger(__name__)
     logger.info("Starting bot...")
 
+    from utils.auth import AuthMiddleware
+    from utils.api import api_client
+
+    # Admin Login
+    await api_client.admin_login()
+
+    # Register Middlewares
+    dp.update.outer_middleware(AuthMiddleware())
+
     dp.include_router(inline.router)  # Must be first to catch inline queries
     dp.include_router(admin.router)   # Admin callback handlers
     dp.include_router(menu.router)    # Menu button handlers
