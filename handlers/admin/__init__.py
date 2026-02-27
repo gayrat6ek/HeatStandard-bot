@@ -56,7 +56,7 @@ async def decline_order(callback: types.CallbackQuery):
     
     try:
         # Update order status to declined
-        res = await api_client.update_order_status(order_id, "rejected")
+        res = await api_client.update_order_status(order_id, "declined")
         
         if "error" not in res:
             order_number = res.get("order_number", "N/A")

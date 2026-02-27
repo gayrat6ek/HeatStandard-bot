@@ -97,7 +97,6 @@ async def history_handler(message: types.Message, state: FSMContext):
     status_map = {
         "pending": "⏳",
         "confirmed": "✅",
-        "rejected": "❌",
         "declined": "❌"
     }
     
