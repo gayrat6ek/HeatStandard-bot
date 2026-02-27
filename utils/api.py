@@ -59,18 +59,25 @@ class BackendAPI:
         headers = kwargs.get("headers", {})
         if "Authorization" not in headers:
             user_token = _token_var.get()
+            # If no user token and no admin token, try to login as admin first
+            if not user_token and not self._admin_token:
+                await self.admin_login()
+            
             token = user_token or self._admin_token
             if token:
                 headers["Authorization"] = f"Bearer {token}"
+            else:
+                logger.warning(f"No authentication token available for request: {method} {path}")
         
         kwargs["headers"] = headers
 
         async with session.request(method, url, **kwargs) as response:
             if response.status == 401 and not is_retry:
-                # Potential token expiry, try admin login again if we were using admin token
+                # Potential token expiry or missing token, try admin login and retry
+                # Only retry if it's not a user-level request (no user token)
                 if not _token_var.get() and await self.admin_login():
                     kwargs["_is_retry"] = True
-                    # Update headers with new admin token
+                    # Update headers with newly fetched admin token
                     headers["Authorization"] = f"Bearer {self._admin_token}"
                     return await self._request(method, path, **kwargs)
                 
