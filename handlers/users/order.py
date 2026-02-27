@@ -43,7 +43,7 @@ async def show_cart(message: types.Message, state: FSMContext):
     await state.set_state(OrderState.cart)
 
 
-async def show_groups(message: types.Message, state: FSMContext, parent_id: str = None):
+async def show_groups(message: types.Message, state: FSMContext, parent_id: str = None, extra_text: str = None):
     """Show groups at a particular level"""
     data = await state.get_data()
     lang = data.get("lang", "ru")
@@ -66,8 +66,12 @@ async def show_groups(message: types.Message, state: FSMContext, parent_id: str 
     )
     
     is_root = parent_id is None
+    category_text = get_text("select_category", lang)
+    if extra_text:
+        category_text = f"{extra_text}\n\n{category_text}"
+    
     await message.answer(
-        get_text("select_category", lang),
+        category_text,
         reply_markup=get_groups_keyboard(groups, lang, is_root=is_root)
     )
     
@@ -340,58 +344,17 @@ async def process_amount(message: types.Message, state: FSMContext):
     
     await state.update_data(cart=cart, groups_stack=[])
     
-    # Confirmation + category selection combined in one message
-    if lang == "uz":
-        confirmation = f"Mahsulot: {product_name} ✅\nsavatga muvaffaqiyatli qo'shildi\n\n{get_text('select_category', lang)}"
-    elif lang == "ru":
-        confirmation = f"Товар: {product_name} ✅\nуспешно добавлен в корзину\n\n{get_text('select_category', lang)}"
-    else:
-        confirmation = f"Product: {product_name} ✅\nsuccessfully added to cart\n\n{get_text('select_category', lang)}"
-    
-    # Fetch root groups
-    res = await api_client.get_groups(parent_id=None)
-    groups = res.get("items", [])
-    
-    if not groups:
-        await message.answer(confirmation)
-        return
-    
-    await state.update_data(
-        current_groups=groups,
-        current_parent_id=None,
-        groups_stack=[]
-    )
-    
-    # Send confirmation + categories in one message
-    await message.answer(
-        confirmation,
-        reply_markup=get_groups_keyboard(groups, lang, is_root=True)
-    )
-    
-    # Search button with hint
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    search_btn_texts = {
-        "uz": "🔍 Mahsulot qidirish",
-        "ru": "🔍 Поиск товаров", 
-        "en": "🔍 Search products"
+    # Confirmation + category selection in one message
+    confirmations = {
+        "uz": f"{product_name} ✅ savatga qo'shildi",
+        "ru": f"{product_name} ✅ добавлен в корзину",
+        "en": f"{product_name} ✅ added to cart"
     }
-    search_hint_texts = {
-        "uz": "Yoki ushbu tugma bilan qidiring 👇",
-        "ru": "Или найдите товар с помощью кнопки 👇",
-        "en": "Or search using the button below 👇"
-    }
-    search_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=search_btn_texts.get(lang, search_btn_texts["ru"]),
-            switch_inline_query_current_chat=""
-        )]
-    ])
-    await message.answer(
-        search_hint_texts.get(lang, search_hint_texts["ru"]),
-        reply_markup=search_keyboard
-    )
+    confirmation = confirmations.get(lang, confirmations["ru"])
     
-    await state.set_state(OrderState.group)
+    # Redirect back to root groups to continue shopping
+    await state.update_data(groups_stack=[])
+    await show_groups(message, state, parent_id=None, extra_text=confirmation)
 
 
 # --- Cart Actions ---
