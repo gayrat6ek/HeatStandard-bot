@@ -4,8 +4,7 @@ from aiogram.exceptions import TelegramBadRequest
 
 from states.registration import OrderState, MenuState
 from keyboards.default.catalog import (
-    get_groups_keyboard,
-    get_products_keyboard,
+    get_catalog_keyboard,
     get_cart_keyboard
 )
 from keyboards.default.menu import get_main_menu_keyboard
@@ -43,18 +42,31 @@ async def show_cart(message: types.Message, state: FSMContext):
     await state.set_state(OrderState.cart)
 
 
-async def show_groups(message: types.Message, state: FSMContext, parent_id: str = None, extra_text: str = None):
-    """Show groups at a particular level"""
+async def show_catalog(message: types.Message, state: FSMContext, parent_id: str = None, page: int = 0, extra_text: str = None):
+    """Show unified catalog (groups and products) with pagination"""
     data = await state.get_data()
     lang = data.get("lang", "ru")
     
-    # Fetch groups
-    res = await api_client.get_groups(parent_id=parent_id)
-    groups = res.get("items", [])
+    # Fetch groups and products
+    groups_res = await api_client.get_groups(parent_id=parent_id)
+    groups = groups_res.get("items", [])
     
-    if not groups:
+    products = []
+    if parent_id:
+        products_res = await api_client.get_products(group_id=parent_id)
+        products = products_res.get("items", [])
+        
+    items = groups + products
+    
+    if not items and parent_id is not None:
         return False
-    
+        
+    # Store mapping for easy lookup
+    item_name_map = {}
+    for item in items:
+        name = item.get(f"name_{lang}", item.get("name_ru", item.get("name", "Unknown")))
+        item_name_map[name.strip()] = item
+        
     # Store groups and navigation stack
     groups_stack = data.get("groups_stack", [])
     if parent_id:
@@ -64,23 +76,25 @@ async def show_groups(message: types.Message, state: FSMContext, parent_id: str 
         groups_stack = []
         
     await state.update_data(
-        current_groups=groups,
+        current_items=items,
+        item_name_map=item_name_map,
         current_parent_id=parent_id,
-        groups_stack=groups_stack
+        groups_stack=groups_stack,
+        current_page=page
     )
     
     is_root = parent_id is None
-    category_text = get_text("select_category", lang)
+    category_text = get_text("select_category", lang) if is_root else get_text("select_product", lang)
     if extra_text:
         category_text = f"{extra_text}\n\n{category_text}"
     
     await message.answer(
         category_text,
-        reply_markup=get_groups_keyboard(groups, lang, is_root=is_root)
+        reply_markup=get_catalog_keyboard(items, lang, is_root=is_root, page=page)
     )
     
     # Show search button when at root level
-    if is_root:
+    if is_root and page == 0:
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         search_btn_texts = {
             "uz": "🔍 Mahsulot qidirish",
@@ -107,38 +121,6 @@ async def show_groups(message: types.Message, state: FSMContext, parent_id: str 
     return True
 
 
-async def show_products(message: types.Message, state: FSMContext, group_id: str):
-    """Show products for a group"""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    
-    res = await api_client.get_products(group_id=group_id)
-    products = res.get("items", [])
-    
-    if not products:
-        return False
-    
-    # Build product name mapping for easier lookup
-    product_name_map = {}
-    for prod in products:
-        prod_name = prod.get(f"name_{lang}", prod.get("name_ru", prod.get("name", "Unknown")))
-        normalized_name = prod_name.strip()
-        product_name_map[normalized_name] = prod
-    
-    await state.update_data(
-        current_products=products,
-        product_name_map=product_name_map,
-        current_group_id=group_id
-    )
-    
-    await message.answer(
-        get_text("select_product", lang),
-        reply_markup=get_products_keyboard(products, lang)
-    )
-    await state.set_state(OrderState.product)
-    return True
-
-
 # --- Entry Point ---
 @router.message(F.text.in_(["🛍 Buyurtma berish", "🛍 Заказать", "🛍 Order"]))
 async def start_order(message: types.Message, state: FSMContext):
@@ -154,38 +136,47 @@ async def start_order(message: types.Message, state: FSMContext):
         current_parent_id=None
     )
     
-    # Fetch root groups (parent_id = null)
-    has_groups = await show_groups(message, state, parent_id=None)
+    # Fetch root catalog (parent_id = null)
+    has_items = await show_catalog(message, state, parent_id=None, page=0)
     
-    if not has_groups:
-        await message.answer("No groups found / Guruhlar topilmadi")
+    if not has_items:
+        await message.answer("No items found / Ma'lumot topilmadi")
 
 
-# --- Group Selected ---
+# --- Catalog Selected ---
 @router.message(OrderState.group)
-async def group_selected(message: types.Message, state: FSMContext):
+@router.message(OrderState.product) # Fallback mapping
+async def catalog_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     current_parent_id = data.get("current_parent_id")
     groups_stack = data.get("groups_stack", [])
+    current_page = data.get("current_page", 0)
     
+    # Check pagination
+    if message.text.startswith("⬅️"):
+        await show_catalog(message, state, parent_id=current_parent_id, page=max(0, current_page - 1))
+        return
+    if message.text.endswith("➡️"):
+        await show_catalog(message, state, parent_id=current_parent_id, page=current_page + 1)
+        return
+        
     # Check if back to menu (only for root level)
     if message.text == get_text("back_to_menu", lang):
         await message.answer(get_text("menu_main", lang), reply_markup=get_main_menu_keyboard(lang))
         await state.set_state(MenuState.main)
         return
     
-    # Check if back (for non-root levels)
+    # Check if back
     if message.text == get_text("back", lang):
         if groups_stack:
             groups_stack.pop()  # Remove current level
             parent_id = groups_stack[-1] if groups_stack else None
             await state.update_data(groups_stack=groups_stack)
-            await show_groups(message, state, parent_id=parent_id)
+            await show_catalog(message, state, parent_id=parent_id, page=0)
         else:
-            # Go to root
             await state.update_data(groups_stack=[])
-            await show_groups(message, state, parent_id=None)
+            await show_catalog(message, state, parent_id=None, page=0)
         return
     
     # Check if view cart
@@ -193,131 +184,83 @@ async def group_selected(message: types.Message, state: FSMContext):
         await show_cart(message, state)
         return
     
-    # Find group by name
-    current_groups = data.get("current_groups", [])
-    selected_group = None
-    for group in current_groups:
-        group_name = group.get(f"name_{lang}", group.get("name_ru", group.get("name", "")))
-        if group_name == message.text:
-            selected_group = group
-            break
-    
-    if not selected_group:
-        await message.answer("Group not found / Guruh topilmadi")
-        return
-    
-    group_id = selected_group["id"]
-    
-    # Check if this group has child groups
-    child_res = await api_client.get_groups(parent_id=group_id)
-    child_groups = child_res.get("items", [])
-    
-    if child_groups:
-        # Has children - navigate deeper
-        await show_groups(message, state, parent_id=group_id)
-    else:
-        # No children - show products
-        has_products = await show_products(message, state, group_id=group_id)
-        if not has_products:
-            await message.answer("No products found in this group / Bu guruhda mahsulotlar topilmadi")
-
-
-# --- Product Selected ---
-@router.message(OrderState.product)
-async def product_selected(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    
-    # Check if view cart
-    if message.text == get_text("view_cart", lang):
-        await show_cart(message, state)
-        return
-    
-    # Check if back - go back to parent group
-    if message.text == get_text("back", lang):
-        current_group_id = data.get("current_group_id")
-        groups_stack = data.get("groups_stack", [])
-        
-        # Pop current group from stack and show parent
-        if groups_stack:
-            parent_id = groups_stack[-1]
-            await show_groups(message, state, parent_id=parent_id)
-        else:
-            await show_groups(message, state, parent_id=None)
-        return
-    
-    # Find product using name mapping
-    product_name_map = data.get("product_name_map", {})
+    item_name_map = data.get("item_name_map", {})
     normalized_text = message.text.strip()
-    
-    selected_prod = product_name_map.get(normalized_text)
+    selected_item = item_name_map.get(normalized_text)
     
     # Fallback search
-    if not selected_prod:
-        products = data.get("current_products", [])
-        for prod in products:
-            prod_name = prod.get(f"name_{lang}", prod.get("name_ru", prod.get("name", "")))
-            if prod_name.strip() == normalized_text:
-                selected_prod = prod
+    if not selected_item:
+        items = data.get("current_items", [])
+        for item in items:
+            item_name = item.get(f"name_{lang}", item.get("name_ru", item.get("name", "")))
+            if item_name.strip() == normalized_text:
+                selected_item = item
                 break
-    
-    if not selected_prod:
-        logger.error(f"Product not found. Searched: '{normalized_text}', Available: {list(product_name_map.keys())}")
-        await message.answer(f"Product not found / Mahsulot topilmadi")
+                
+    if not selected_item:
+        logger.error(f"Item not found. Searched: '{normalized_text}', Available: {list(item_name_map.keys())}")
+        await message.answer("Item not found / Element topilmadi")
         return
+        
+    # Determine if it's a group or product
+    if "price" in selected_item: # It's a product
+        prod_id = selected_item["id"]
+        
+        # Fetch full product details
+        product = await api_client.get_product(prod_id)
+        if not product:
+            await message.answer("Product details not available")
+            return
     
-    prod_id = selected_prod["id"]
+        # Store product info for cart
+        await state.update_data(current_prod_id=prod_id, current_prod=product)
     
-    # Fetch full product details
-    product = await api_client.get_product(prod_id)
-    if not product:
-        await message.answer("Product details not available")
-        return
-
-    # Store product info for cart
-    await state.update_data(current_prod_id=prod_id, current_prod=product)
-
-    name = product.get(f"name_{lang}", product.get("name_ru", product.get("name", "Unknown")))
-    desc = product.get(f"description_{lang}", product.get("description_ru", product.get("description", "")))
-    price = product.get("price", 0)
-    images = product.get("images", [])
-    
-    text = f"<b>{name}</b>\n\n{desc}\n\n{get_text('price', lang)}: {format_price(price)}\n\n{get_text('enter_amount', lang)}"
-    
-    # Send image with caption if product has images
-    image_sent = False
-    if images and len(images) > 0:
-        img_url = images[0]
-        try:
-            # Convert localhost URLs to internal Docker network URL
-            if "localhost" in img_url or "127.0.0.1" in img_url:
-                img_url = img_url.replace("http://localhost:8002", "http://app:8000")
-                img_url = img_url.replace("http://127.0.0.1:8002", "http://app:8000")
-            
-            # Download image and send as bytes
-            import aiohttp
-            async with aiohttp.ClientSession() as session:
-                async with session.get(img_url) as response:
-                    if response.status == 200:
-                        image_data = await response.read()
-                        from aiogram.types import BufferedInputFile
-                        photo = BufferedInputFile(image_data, filename="product.jpg")
-                        await message.answer_photo(
-                            photo=photo,
-                            caption=text,
-                            parse_mode="HTML"
-                        )
-                        image_sent = True
-                    else:
-                        logger.warning(f"Failed to download image: HTTP {response.status}")
-        except Exception as e:
-            logger.warning(f"Failed to send product image: {e}")
-    
-    if not image_sent:
-        await message.answer(text, parse_mode="HTML")
-    
-    await state.set_state(OrderState.amount)
-
+        name = product.get(f"name_{lang}", product.get("name_ru", product.get("name", "Unknown")))
+        desc = product.get(f"description_{lang}", product.get("description_ru", product.get("description", "")))
+        price = product.get("price", 0)
+        images = product.get("images", [])
+        
+        text = f"<b>{name}</b>\n\n{desc}\n\n{get_text('price', lang)}: {format_price(price)}\n\n{get_text('enter_amount', lang)}"
+        
+        # Send image with caption if product has images
+        image_sent = False
+        if images and len(images) > 0:
+            img_url = images[0]
+            try:
+                # Convert localhost URLs to internal Docker network URL
+                if "localhost" in img_url or "127.0.0.1" in img_url:
+                    img_url = img_url.replace("http://localhost:8002", "http://app:8000")
+                    img_url = img_url.replace("http://127.0.0.1:8002", "http://app:8000")
+                
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(img_url) as response:
+                        if response.status == 200:
+                            image_data = await response.read()
+                            from aiogram.types import BufferedInputFile
+                            photo = BufferedInputFile(image_data, filename="product.jpg")
+                            await message.answer_photo(
+                                photo=photo,
+                                caption=text,
+                                parse_mode="HTML"
+                            )
+                            image_sent = True
+                        else:
+                            logger.warning(f"Failed to download image: HTTP {response.status}")
+            except Exception as e:
+                logger.warning(f"Failed to send product image: {e}")
+        
+        if not image_sent:
+            await message.answer(text, parse_mode="HTML")
+        
+        await state.set_state(OrderState.amount)
+    else:
+        # It's a group
+        group_id = selected_item["id"]
+        # Navigate deeper
+        has_items = await show_catalog(message, state, parent_id=group_id, page=0)
+        if not has_items:
+             await message.answer("No products found in this category / Bu kategoriyada mahsulotlar topilmadi")
 
 # --- Amount Entry ---
 @router.message(OrderState.amount)
@@ -327,11 +270,9 @@ async def process_amount(message: types.Message, state: FSMContext):
     
     # Handle Back button
     if message.text == get_text("back", lang):
-        current_group_id = data.get("current_group_id")
-        if current_group_id:
-            await show_products(message, state, group_id=current_group_id)
-        else:
-            await show_groups(message, state, parent_id=None)
+        current_parent_id = data.get("current_parent_id")
+        current_page = data.get("current_page", 0)
+        await show_catalog(message, state, parent_id=current_parent_id, page=current_page)
         return
         
     # Handle View Cart button
@@ -372,7 +313,7 @@ async def process_amount(message: types.Message, state: FSMContext):
     
     # Redirect back to root groups to continue shopping
     await state.update_data(groups_stack=[])
-    await show_groups(message, state, parent_id=None, extra_text=confirmation)
+    await show_catalog(message, state, parent_id=None, page=0, extra_text=confirmation)
 
 
 # --- Cart Actions ---
@@ -387,7 +328,7 @@ async def cart_action(message: types.Message, state: FSMContext):
     if message.text == get_text("continue_shopping", lang):
         # Go back to root groups
         await state.update_data(groups_stack=[])
-        await show_groups(message, state, parent_id=None)
+        await show_catalog(message, state, parent_id=None, page=0)
         return
     
     # Clear Cart
