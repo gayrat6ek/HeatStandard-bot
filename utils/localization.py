@@ -9,10 +9,13 @@ with open(LOCALES_PATH, "r", encoding="utf-8") as f:
 
 def get_text(key: str, lang: str = "ru") -> str:
     """Get localized text."""
+    if key not in LOCALE_DATA:
+        return key
+    
     try:
         return LOCALE_DATA[key][lang]
     except KeyError:
-        return LOCALE_DATA[key]["ru"]  # Fallback
+        return LOCALE_DATA[key].get("ru", key)  # Fallback
 
 
 def format_price(amount) -> str:
