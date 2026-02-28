@@ -13,7 +13,7 @@ from aiogram import Router, types, F
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from aiogram.fsm.context import FSMContext
 from states.registration import OrderState
-from keyboards.default.catalog import get_groups_keyboard
+# Replaced inline keyboard import with show_catalog dynamically where needed
 from utils.api import api_client
 from utils.localization import get_text, format_price
 from hashlib import md5
@@ -218,25 +218,10 @@ async def handle_inline_product_selection(message: types.Message, state: FSMCont
 @router.message(F.text == "/start browse")
 async def start_browse(message: types.Message, state: FSMContext):
     """Handle browse deep-link - show main catalog"""
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
+    from handlers.users.order import show_catalog
+    has_items = await show_catalog(message, state, parent_id=None, page=0)
     
-    # Fetch root groups
-    res = await api_client.get_groups(parent_id=None)
-    groups = res.get("items", [])
-    
-    if groups:
-        await state.update_data(
-            current_groups=groups,
-            current_parent_id=None,
-            groups_stack=[]
-        )
-        await message.answer(
-            get_text("select_category", lang),
-            reply_markup=get_groups_keyboard(groups, lang, is_root=True)
-        )
-        await state.set_state(OrderState.group)
-    else:
+    if not has_items:
         await message.answer("No products available / Mahsulotlar mavjud emas")
 
 

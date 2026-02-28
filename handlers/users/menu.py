@@ -118,56 +118,22 @@ async def history_handler(message: types.Message, state: FSMContext):
 async def order_handler(message: types.Message, state: FSMContext):
     """Start ordering - show root groups and search button"""
     data = await state.get_data()
-    lang = data.get("lang", "ru")
     
-    # Fetch root groups
-    res = await api_client.get_groups(parent_id=None)
-    groups = res.get("items", [])
-    
-    if not groups:
-        await message.answer("No products available / Mahsulotlar mavjud emas / Нет доступных товаров")
-        return
-    
+    # Initialize state
     await state.update_data(
-        current_groups=groups,
-        current_parent_id=None,
+        cart=data.get("cart", []),
         groups_stack=[],
-        cart=data.get("cart", [])
+        current_items=[],
+        item_name_map={},
+        current_parent_id=None,
+        current_page=0
     )
     
-    from keyboards.default.catalog import get_groups_keyboard
-    from states.registration import OrderState
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from handlers.users.order import show_catalog
+    has_items = await show_catalog(message, state, parent_id=None, page=0)
     
-    # Show groups with reply keyboard
-    await message.answer(
-        get_text("select_category", lang),
-        reply_markup=get_groups_keyboard(groups, lang, is_root=True)
-    )
-    
-    # Show inline search button combined with hint text
-    search_btn_texts = {
-        "uz": "🔍 Mahsulot qidirish",
-        "ru": "🔍 Поиск товаров", 
-        "en": "🔍 Search products"
-    }
-    search_hint_texts = {
-        "uz": "Yoki ushbu tugma bilan qidiring 👇",
-        "ru": "Или найдите товар с помощью кнопки 👇",
-        "en": "Or search using the button below 👇"
-    }
-    search_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=search_btn_texts.get(lang, search_btn_texts["ru"]),
-            switch_inline_query_current_chat=""
-        )]
-    ])
-    await message.answer(
-        search_hint_texts.get(lang, search_hint_texts["ru"]),
-        reply_markup=search_keyboard
-    )
-    
-    await state.set_state(OrderState.group)
+    if not has_items:
+        await message.answer("No products available / Mahsulotlar mavjud emas / Нет доступных товаров")
 
 
 # Handler for Language Change from Settings
