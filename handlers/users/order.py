@@ -144,8 +144,8 @@ async def start_order(message: types.Message, state: FSMContext):
 
 
 # --- Catalog Selected ---
-@router.message(OrderState.group)
-@router.message(OrderState.product) # Fallback mapping
+@router.message(OrderState.group, ~F.text.startswith("/"))
+@router.message(OrderState.product, ~F.text.startswith("/")) # Fallback mapping
 async def catalog_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
@@ -154,10 +154,10 @@ async def catalog_handler(message: types.Message, state: FSMContext):
     current_page = data.get("current_page", 0)
     
     # Check pagination
-    if message.text.startswith("⬅️"):
+    if message.text == get_text("prev", lang):
         await show_catalog(message, state, parent_id=current_parent_id, page=max(0, current_page - 1))
         return
-    if message.text.endswith("➡️"):
+    if message.text == get_text("next", lang):
         await show_catalog(message, state, parent_id=current_parent_id, page=current_page + 1)
         return
         
@@ -263,7 +263,7 @@ async def catalog_handler(message: types.Message, state: FSMContext):
              await message.answer("No products found in this category / Bu kategoriyada mahsulotlar topilmadi")
 
 # --- Amount Entry ---
-@router.message(OrderState.amount)
+@router.message(OrderState.amount, ~F.text.startswith("/"))
 async def process_amount(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
@@ -317,7 +317,7 @@ async def process_amount(message: types.Message, state: FSMContext):
 
 
 # --- Cart Actions ---
-@router.message(OrderState.cart)
+@router.message(OrderState.cart, ~F.text.startswith("/"))
 async def cart_action(message: types.Message, state: FSMContext):
     data = await state.get_data()
     cart = data.get("cart", [])

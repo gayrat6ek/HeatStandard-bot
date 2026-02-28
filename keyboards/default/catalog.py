@@ -1,7 +1,7 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from utils.localization import get_text
 
-def get_catalog_keyboard(items: list, lang: str, is_root: bool = True, page: int = 0, items_per_page: int = 14):
+def get_catalog_keyboard(items: list, lang: str, is_root: bool = True, page: int = 0, items_per_page: int = 50):
     """Create reply keyboard for unified catalog with pagination"""
     buttons = []
     
@@ -52,9 +52,9 @@ def get_catalog_keyboard(items: list, lang: str, is_root: bool = True, page: int
     # Add Pagination Buttons if needed
     pagination_row = []
     if page > 0:
-        pagination_row.append(KeyboardButton(text="⬅️ " + get_text("back", lang).replace("🔙 ", "")))
+        pagination_row.append(KeyboardButton(text=get_text("prev", lang)))
     if end_idx < total_items:
-        pagination_row.append(KeyboardButton(text=get_text("next", lang) + " ➡️" if get_text("next", lang) else "Далее ➡️"))
+        pagination_row.append(KeyboardButton(text=get_text("next", lang)))
         
     if pagination_row:
         buttons.append(pagination_row)
