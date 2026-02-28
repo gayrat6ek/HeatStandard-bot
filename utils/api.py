@@ -6,8 +6,6 @@ from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
 
-# Task-local storage for user token
-_token_var: ContextVar[Optional[str]] = ContextVar("user_token", default=None)
 
 class BackendAPI:
     def __init__(self):
@@ -23,10 +21,6 @@ class BackendAPI:
     async def close(self):
         if self.session and not self.session.closed:
             await self.session.close()
-
-    def set_user_token(self, token: Optional[str]):
-        """Set user token for the current context."""
-        _token_var.set(token)
 
     async def admin_login(self) -> bool:
         """Login as admin to get management token."""
@@ -58,26 +52,22 @@ class BackendAPI:
         
         headers = kwargs.get("headers", {})
         if "Authorization" not in headers:
-            user_token = _token_var.get()
-            # If no user token and no admin token, try to login as admin first
-            if not user_token and not self._admin_token:
+            # Always ensure we have an admin token
+            if not self._admin_token:
                 await self.admin_login()
             
-            token = user_token or self._admin_token
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
+            if self._admin_token:
+                headers["Authorization"] = f"Bearer {self._admin_token}"
             else:
-                logger.warning(f"No authentication token available for request: {method} {path}")
+                logger.warning(f"No admin authentication token available for request: {method} {path}")
         
         kwargs["headers"] = headers
 
         async with session.request(method, url, **kwargs) as response:
             if response.status == 401 and not is_retry:
-                # Potential token expiry or missing token, try admin login and retry
-                # Only retry if it's not a user-level request (no user token)
-                if not _token_var.get() and await self.admin_login():
+                # Admin token might have expired, try to login again and retry
+                if await self.admin_login():
                     kwargs["_is_retry"] = True
-                    # Update headers with newly fetched admin token
                     headers["Authorization"] = f"Bearer {self._admin_token}"
                     return await self._request(method, path, **kwargs)
                 
@@ -145,16 +135,6 @@ class BackendAPI:
 
     async def update_lang(self, telegram_id: str, lang: str):
         """Update user language."""
-        # Using /users/me/profile requires user token. 
-        # If not in context, we login first.
-        if not _token_var.get():
-            login_res = await self.login_user(telegram_id)
-            token = login_res.get("access_token")
-            if token:
-                self.set_user_token(token)
-            else:
-                return
-
         payload = {"current_lang": lang}
         await self._request("PUT", "/users/me/profile", json=payload)
 
