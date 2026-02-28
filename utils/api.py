@@ -102,13 +102,13 @@ class BackendAPI:
 
     async def get_groups(self, parent_id: str = None) -> Dict[str, Any]:
         """Fetch groups."""
-        path = "/groups?limit=100"
+        path = "/groups?limit=10000"
         path += f"&parent_id={parent_id if parent_id else 'null'}"
         return await self._request("GET", path)
 
     async def get_products(self, group_id: str) -> Dict[str, Any]:
         """Fetch products for a group."""
-        return await self._request("GET", f"/products?group_id={group_id}&limit=100")
+        return await self._request("GET", f"/products?group_id={group_id}&limit=10000")
 
     async def search_products(self, query: str, limit: int = 20) -> Dict[str, Any]:
         """Search products by name."""
