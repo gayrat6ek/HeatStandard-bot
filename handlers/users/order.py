@@ -58,7 +58,11 @@ async def show_groups(message: types.Message, state: FSMContext, parent_id: str 
     # Store groups and navigation stack
     groups_stack = data.get("groups_stack", [])
     if parent_id:
-        groups_stack.append(parent_id)
+        if not groups_stack or groups_stack[-1] != parent_id:
+            groups_stack.append(parent_id)
+    else:
+        groups_stack = []
+        
     await state.update_data(
         current_groups=groups,
         current_parent_id=parent_id,
@@ -320,6 +324,20 @@ async def product_selected(message: types.Message, state: FSMContext):
 async def process_amount(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
+    
+    # Handle Back button
+    if message.text == get_text("back", lang):
+        current_group_id = data.get("current_group_id")
+        if current_group_id:
+            await show_products(message, state, group_id=current_group_id)
+        else:
+            await show_groups(message, state, parent_id=None)
+        return
+        
+    # Handle View Cart button
+    if message.text == get_text("view_cart", lang):
+        await show_cart(message, state)
+        return
     
     try:
         amount = float(message.text)
